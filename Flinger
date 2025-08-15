@@ -1,0 +1,383 @@
+-- Ram & Spin (Balanced & Reliable)
+-- LocalScript (XENO-friendly)
+-- Put this in StarterPlayerScripts or a LocalScript where LocalPlayer can access it
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ===== CONFIGURATION (tweak these for feel) ===== --
+-- NOTE: extremely large values cause "tunneling" (phasing through parts) and inconsistent collisions.
+-- These defaults aim for brutal hits but avoid tunneling.
+local RAM_DISTANCE = 10                -- how close before starting the hit routine
+local RAM_BACK_DISTANCE = 3           -- how far behind target to teleport/approach
+local FLING_FORCE = 2500              -- burst magnitude (AssemblyLinearVelocity scale). Tweak this down if you phase.
+local FLING_BURSTS = 3                -- number of repeated short bursts per hit
+local FLING_BURST_INTERVAL = 0.035    -- time between bursts (seconds)
+local APPROACH_SPEED = 400           -- approach speed (AssemblyLinearVelocity magnitude)
+local TRACK_INTERVAL = 0.016          -- loop tick (heartbeat-friendly)
+local DURATION = 4                    -- max seconds per use
+local SAFE_VERTICAL_OFFSET = 2        -- lift a bit so you don't miss feet
+local TELEPORT_SNAP_THRESHOLD = 1     -- distance threshold to snap behind
+local RETREAT_TIME = 0.06
+
+-- Spin — still very fast, but not astronomical to avoid physics instability
+local SPIN_VELOCITY = Vector3.new(800, 800, 800)
+
+-- UI Colors
+local NORMAL_COLOR = Color3.fromRGB(60,150,255)
+local NORMAL_HOVER = Color3.fromRGB(84,176,255)
+local ACTIVE_COLOR = Color3.fromRGB(220,60,60)
+local ACTIVE_HOVER = Color3.fromRGB(255,90,90)
+
+-- ===== Helper utilities =====  --
+local function safeFindHRP(character)
+    if not character then return nil end
+    return character:FindFirstChild("HumanoidRootPart") or (character:FindFirstChild("Humanoid") and character.Humanoid.RootPart) or nil
+end
+
+local function getTargetByQuery(query)
+    if not query or query == "" then return nil end
+    local q = query:lower()
+    -- try exact by Name first
+    local exact = Players:FindFirstChild(query)
+    if exact then return exact end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local dn = (p.DisplayName or ""):lower()
+            local un = (p.Name or ""):lower()
+            if dn:find(q, 1, true) or un:find(q, 1, true) then
+                return p
+            end
+        end
+    end
+    return nil
+end
+
+local function setAssemblyLinearVelocity(part, vec)
+    if not part or not part:IsA("BasePart") then return end
+    local ok, _ = pcall(function()
+        part.AssemblyLinearVelocity = vec
+    end)
+    if not ok then
+        pcall(function() part.Velocity = vec end)
+    end
+end
+
+local function setAssemblyAngularVelocity(part, vec)
+    if not part or not part:IsA("BasePart") then return end
+    pcall(function() part.AssemblyAngularVelocity = vec end)
+end
+
+-- ===== GUI (kept exactly like you asked) ===== --
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RamSpinGuiOptimized"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 420, 0, 140)
+mainFrame.Position = UDim2.new(0.5, -210, 0.08, 0)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(18,18,18)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+local mainCorner = Instance.new("UICorner", mainFrame); mainCorner.CornerRadius = UDim.new(0,12)
+local mainStroke = Instance.new("UIStroke", mainFrame); mainStroke.Color = Color3.fromRGB(44,44,44); mainStroke.Thickness = 1; mainStroke.Transparency = 0.6
+
+local padding = 10
+
+local titleBar = Instance.new("Frame", mainFrame)
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, -padding*2, 0, 34)
+titleBar.Position = UDim2.new(0, padding, 0, padding)
+titleBar.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", titleBar)
+title.Size = UDim2.new(0.6, 0, 1, 0)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Fling GUI by LongaaVS2"
+title.Font = Enum.Font.GothamSemibold
+title.TextSize = 18
+title.TextColor3 = Color3.fromRGB(240,240,240)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local miniHint = Instance.new("TextLabel", titleBar)
+miniHint.Size = UDim2.new(0.4, 0, 1, 0)
+miniHint.Position = UDim2.new(0.6, 0, 0, 0)
+miniHint.BackgroundTransparency = 1
+miniHint.Text = "RightAlt to toggle"
+miniHint.Font = Enum.Font.Gotham
+miniHint.TextSize = 12
+miniHint.TextColor3 = Color3.fromRGB(160,160,160)
+miniHint.TextXAlignment = Enum.TextXAlignment.Right
+
+local row = Instance.new("Frame", mainFrame)
+row.Size = UDim2.new(1, -padding*2, 0, 42)
+row.Position = UDim2.new(0, padding, 0, padding + 34 + 8)
+row.BackgroundTransparency = 1
+
+local inputBox = Instance.new("TextBox", row)
+inputBox.Size = UDim2.new(1, -126, 1, 0)
+inputBox.Position = UDim2.new(0, 0, 0, 0)
+inputBox.BackgroundColor3 = Color3.fromRGB(32,32,32)
+inputBox.TextColor3 = Color3.fromRGB(245,245,245)
+inputBox.PlaceholderText = "Target Name"
+inputBox.ClearTextOnFocus = true
+inputBox.Font = Enum.Font.Gotham
+inputBox.TextSize = 15
+inputBox.Text = ""
+inputBox.AutoLocalize = false
+inputBox.TextXAlignment = Enum.TextXAlignment.Left
+local inCorner = Instance.new("UICorner", inputBox); inCorner.CornerRadius = UDim.new(0,8)
+local inStroke = Instance.new("UIStroke", inputBox); inStroke.Color = Color3.fromRGB(50,50,50); inStroke.Thickness = 1; inStroke.Transparency = 0.6
+local inputPadding = Instance.new("UIPadding", inputBox); inputPadding.PaddingLeft = UDim.new(0,8)
+
+local actionBtn = Instance.new("TextButton", row)
+actionBtn.Size = UDim2.new(0, 116, 1, 0)
+actionBtn.Position = UDim2.new(1.29, -116, 0, 0)
+actionBtn.AnchorPoint = Vector2.new(1, 0)
+actionBtn.BackgroundColor3 = NORMAL_COLOR
+actionBtn.Text = "Fling"
+actionBtn.Font = Enum.Font.GothamBold
+actionBtn.TextSize = 15
+actionBtn.TextColor3 = Color3.fromRGB(255,255,255)
+local btnCorner = Instance.new("UICorner", actionBtn); btnCorner.CornerRadius = UDim.new(0,8)
+local btnStroke = Instance.new("UIStroke", actionBtn); btnStroke.Color = Color3.fromRGB(38,105,190); btnStroke.Thickness = 1; btnStroke.Transparency = 0.45
+
+local extraRow = Instance.new("Frame", mainFrame)
+extraRow.Size = UDim2.new(1, -padding*2, 0, 20)
+extraRow.Position = UDim2.new(0, padding, 0, padding + 34 + 8 + 42 + 6)
+extraRow.BackgroundTransparency = 1
+
+local statusLabel = Instance.new("TextLabel", mainFrame)
+statusLabel.Name = "StatusLabel"
+statusLabel.Size = UDim2.new(1, -padding*2, 0, 22)
+statusLabel.Position = UDim2.new(0, padding, 1, - (padding + 27))
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Ready"
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = 13
+statusLabel.TextColor3 = Color3.fromRGB(200,200,200)
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Drag
+local dragging = false
+local dragStartPos, frameStartPos, dragInput
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStartPos = input.Position
+        frameStartPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+titleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if dragging and dragInput and frameStartPos and dragStartPos then
+        local delta = dragInput.Position - dragStartPos
+        mainFrame.Position = UDim2.new(frameStartPos.X.Scale, frameStartPos.X.Offset + delta.X, frameStartPos.Y.Scale, frameStartPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- RightAlt toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.RightAlt then
+        screenGui.Enabled = not screenGui.Enabled
+    end
+end)
+
+-- Hover tweens
+local hoverTweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local function refreshButtonColor()
+    local bg = (actionBtn.Text == "Stop") and ACTIVE_COLOR or NORMAL_COLOR
+    actionBtn.BackgroundColor3 = bg
+end
+
+actionBtn.MouseEnter:Connect(function()
+    TweenService:Create(actionBtn, hoverTweenInfo, {BackgroundColor3 = (actionBtn.Text == "Stop") and ACTIVE_HOVER or NORMAL_HOVER}):Play()
+end)
+actionBtn.MouseLeave:Connect(function()
+    TweenService:Create(actionBtn, hoverTweenInfo, {BackgroundColor3 = (actionBtn.Text == "Stop") and ACTIVE_COLOR or NORMAL_COLOR}):Play()
+end)
+
+-- ===== Fling core (reliable & brutal) =====
+local active = false
+local flingTask
+local connections = {}
+
+local function cleanupConnections()
+    for _, c in ipairs(connections) do
+        if c then pcall(function() c:Disconnect() end) end
+    end
+    connections = {}
+end
+
+local function teleportBehindAndSnap(myHRP, targetHRP, behindDistance)
+    if not (myHRP and targetHRP) then return false end
+    local behindPos = targetHRP.Position - targetHRP.CFrame.LookVector * behindDistance
+    local desired = CFrame.lookAt(behindPos + Vector3.new(0, SAFE_VERTICAL_OFFSET, 0), targetHRP.Position)
+    -- try PivotTo first (more modern)
+    local ok = pcall(function() myHRP:PivotTo(desired) end)
+    if not ok and myHRP.Parent then
+        pcall(function() myHRP.CFrame = desired end)
+    end
+    -- keep rotational momentum so collisions stay brutal
+    return true
+end
+
+local function flingTarget(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then
+        statusLabel.Text = "Target not available"
+        return
+    end
+
+    local startTime = tick()
+    local myChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local myHRP = safeFindHRP(myChar)
+    local targetChar = targetPlayer.Character or targetPlayer.CharacterAdded:Wait()
+    local targetHRP = safeFindHRP(targetChar)
+    if not myHRP or not targetHRP then
+        statusLabel.Text = "Missing HumanoidRootParts"
+        return
+    end
+
+    -- fast spin in X,Y,Z while active
+    setAssemblyAngularVelocity(myHRP, SPIN_VELOCITY)
+
+    statusLabel.Text = ("Flinging %s... — BRUTAL MODE"):format(targetPlayer.Name)
+
+    while active and tick() - startTime < DURATION do
+        if not targetPlayer.Character or not targetPlayer.Character.Parent then break end
+        targetHRP = safeFindHRP(targetPlayer.Character)
+        if not targetHRP then break end
+
+        local toTarget = targetHRP.Position - myHRP.Position
+        local dist = toTarget.Magnitude
+
+        -- Approach if far
+        if dist > RAM_DISTANCE then
+            -- move toward an intercept point slightly ahead of the target
+            local lead = targetHRP.Velocity * 0.12
+            local goalPos = targetHRP.Position + lead - (targetHRP.CFrame.LookVector * RAM_BACK_DISTANCE)
+            local dir = (goalPos - myHRP.Position)
+            if dir.Magnitude > 0.1 then
+                setAssemblyLinearVelocity(myHRP, dir.Unit * APPROACH_SPEED)
+            end
+            RunService.Heartbeat:Wait()
+            continue
+        end
+
+        -- snap behind target if not close enough to the ideal behind pos
+        local behindPos = targetHRP.Position - targetHRP.CFrame.LookVector * RAM_BACK_DISTANCE + Vector3.new(0, SAFE_VERTICAL_OFFSET, 0)
+        if (myHRP.Position - behindPos).Magnitude > TELEPORT_SNAP_THRESHOLD then
+            local dir = (behindPos - myHRP.Position)
+            setAssemblyLinearVelocity(myHRP, dir.Unit * APPROACH_SPEED * 1.25)
+            RunService.Heartbeat:Wait()
+            continue
+        end
+
+        -- final snap for consistent contact
+        teleportBehindAndSnap(myHRP, targetHRP, RAM_BACK_DISTANCE)
+        RunService.Heartbeat:Wait()
+        task.wait(0.05) -- small pause so physics settle and we don't teleport through
+
+        if not (active and targetPlayer.Character and targetHRP) then break end
+
+        -- perform a few controlled bursts (prevents tunneling/phasing)
+        for b = 1, FLING_BURSTS do
+            if not active then break end
+            local dirToHit = (targetHRP.Position - myHRP.Position)
+            if dirToHit.Magnitude > 0.1 then
+                -- use a reasonably-sized burst using AssemblyLinearVelocity for cleaner physics
+                setAssemblyLinearVelocity(myHRP, dirToHit.Unit * FLING_FORCE)
+            end
+            local burstStart = tick()
+            while tick() - burstStart < FLING_BURST_INTERVAL and active do
+                RunService.Heartbeat:Wait()
+            end
+        end
+
+        -- small safety: briefly zero velocity to reduce tunneling on next approach
+        pcall(function() myHRP.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+        RunService.Heartbeat:Wait()
+    end
+
+    -- cleanup: stop velocities so player regains control after finishing
+    pcall(function() myHRP.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+    pcall(function() myHRP.AssemblyAngularVelocity = Vector3.new(0,0,0) end)
+    statusLabel.Text = "Fling finished"
+end
+
+local function stopFling()
+    active = false
+    if flingTask then
+        flingTask = nil
+    end
+    actionBtn.Text = "Fling"
+    refreshButtonColor()
+    statusLabel.Text = "Stopped"
+    cleanupConnections()
+end
+
+local function startFlingFor(query)
+    if active then
+        stopFling()
+        return
+    end
+    local target = getTargetByQuery(query)
+    if not target then
+        statusLabel.Text = "Target not found"
+        return
+    end
+    if target == LocalPlayer then
+        statusLabel.Text = "Can't target yourself"
+        return
+    end
+
+    active = true
+    actionBtn.Text = "Stop"
+    refreshButtonColor()
+    statusLabel.Text = ("Locking on %s — BRUTAL MODE"):format(target.Name)
+
+    flingTask = task.spawn(function()
+        pcall(function()
+            flingTarget(target)
+        end)
+        active = false
+        actionBtn.Text = "Fling"
+        refreshButtonColor()
+    end)
+end
+
+-- UI events
+actionBtn.MouseButton1Click:Connect(function()
+    startFlingFor(inputBox.Text or "")
+end)
+inputBox.FocusLost:Connect(function(enter)
+    if enter then
+        startFlingFor(inputBox.Text or "")
+    end
+end)
+
+LocalPlayer.CharacterRemoving:Connect(stopFling)
+Players.PlayerRemoving:Connect(stopFling)
+
+statusLabel.Text = "Hey, thanks for using my script!"
+print("thanks for using my script! :)")
