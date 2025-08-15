@@ -1,7 +1,3 @@
--- Ram & Spin (Balanced & Reliable)
--- LocalScript (XENO-friendly)
--- Put this in StarterPlayerScripts or a LocalScript where LocalPlayer can access it
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -9,8 +5,6 @@ local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ===== CONFIGURATION (tweak these for feel) ===== --
--- NOTE: extremely large values cause "tunneling" (phasing through parts) and inconsistent collisions.
--- These defaults aim for brutal hits but avoid tunneling.
 local RAM_DISTANCE = 10                -- how close before starting the hit routine
 local RAM_BACK_DISTANCE = 3           -- how far behind target to teleport/approach
 local FLING_FORCE = 2500              -- burst magnitude (AssemblyLinearVelocity scale). Tweak this down if you phase.
@@ -23,7 +17,7 @@ local SAFE_VERTICAL_OFFSET = 2        -- lift a bit so you don't miss feet
 local TELEPORT_SNAP_THRESHOLD = 1     -- distance threshold to snap behind
 local RETREAT_TIME = 0.06
 
--- Spin — still very fast, but not astronomical to avoid physics instability
+-- spin fast but not to the point where you phase through target
 local SPIN_VELOCITY = Vector3.new(800, 800, 800)
 
 -- UI Colors
@@ -71,7 +65,7 @@ local function setAssemblyAngularVelocity(part, vec)
     pcall(function() part.AssemblyAngularVelocity = vec end)
 end
 
--- ===== GUI (kept exactly like you asked) ===== --
+-- ===== GUI ===== --
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "RamSpinGuiOptimized"
 screenGui.ResetOnSpawn = false
@@ -100,14 +94,14 @@ local title = Instance.new("TextLabel", titleBar)
 title.Size = UDim2.new(0.6, 0, 1, 0)
 title.Position = UDim2.new(0, 0, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Fling GUI by LongaaVS2"
+title.Text = "Fling GUI by @LongaaVS2"
 title.Font = Enum.Font.GothamSemibold
 title.TextSize = 18
 title.TextColor3 = Color3.fromRGB(240,240,240)
 title.TextXAlignment = Enum.TextXAlignment.Left
 
 local miniHint = Instance.new("TextLabel", titleBar)
-miniHint.Size = UDim2.new(0.4, 0, 1, 0)
+miniHint.Size = UDim2.new(0.45, 0, 1, 0)
 miniHint.Position = UDim2.new(0.6, 0, 0, 0)
 miniHint.BackgroundTransparency = 1
 miniHint.Text = "RightAlt to toggle"
@@ -354,7 +348,7 @@ local function startFlingFor(query)
     active = true
     actionBtn.Text = "Stop"
     refreshButtonColor()
-    statusLabel.Text = ("Locking on %s — BRUTAL MODE"):format(target.Name)
+    statusLabel.Text = ("Locking on %s"):format(target.Name)
 
     flingTask = task.spawn(function()
         pcall(function()
