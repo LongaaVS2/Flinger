@@ -1,17 +1,14 @@
 -- fling script!
--- UPDATES: Tried to make fling more powerful - Added Fling All Button - Tried to make GUI as clean as I could!
--- STAY TUNED FOR NEXT UPDATE <3
-
+-- UPDATES: Made fling more powerful and immediate, cleaned GUI, removed Fling All because it caused LOTS of problems.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ===== CONFIG =====
 local BEHIND_DISTANCE = 0.001
-local SPIN = Vector3.new(0,1110,0)
-local RAM_FORCE = 1000
+local SPIN = Vector3.new(0,2000,0) -- Increased spin for stronger fling
+local RAM_FORCE = 2000 -- Stronger push force
 local SAFE_VERTICAL_OFFSET = 0
 
 -- ===== Utilities =====
@@ -53,13 +50,13 @@ screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local padding = 10
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0,420,0,180)
+mainFrame.Size = UDim2.new(0,350,0,115) -- slightly smaller without Fling All
 mainFrame.Position = UDim2.new(0.5,-210,0.08,0)
 mainFrame.AnchorPoint = Vector2.new(0.5,0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(18,18,18)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
-mainFrame.Transparency = 0.12
+mainFrame.Transparency = 0
 
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0,12)
 local mainStroke = Instance.new("UIStroke", mainFrame)
@@ -69,7 +66,7 @@ mainStroke.Transparency = 0.6
 
 -- Title
 local titleBar = Instance.new("Frame", mainFrame)
-titleBar.Size = UDim2.new(1,-padding*2,0,34)
+titleBar.Size = UDim2.new(1,-padding*2,0,17)
 titleBar.Position = UDim2.new(0,padding,0,padding)
 titleBar.BackgroundTransparency = 1
 
@@ -100,8 +97,8 @@ row.Position = UDim2.new(0,padding,0,padding+34+8)
 row.BackgroundTransparency = 1
 
 local inputBox = Instance.new("TextBox", row)
-inputBox.Size = UDim2.new(1,-116,1,0)
-inputBox.Position = UDim2.new(0,0,0,0)
+inputBox.Size = UDim2.new(1,-123,1,0)
+inputBox.Position = UDim2.new(0,0,0,-10)
 inputBox.BackgroundColor3 = Color3.fromRGB(32,32,32)
 inputBox.TextColor3 = Color3.fromRGB(245,245,245)
 inputBox.PlaceholderText = "Target Name"
@@ -112,13 +109,12 @@ inputBox.Text = ""
 inputBox.AutoLocalize = false
 inputBox.TextXAlignment = Enum.TextXAlignment.Left
 Instance.new("UICorner",inputBox).CornerRadius = UDim.new(0,8)
-Instance.new("UIStroke",inputBox).Color = Color3.fromRGB(50,50,50)
 local inputPadding = Instance.new("UIPadding",inputBox)
 inputPadding.PaddingLeft = UDim.new(0,8)
 
 local actionBtn = Instance.new("TextButton", row)
 actionBtn.Size = UDim2.new(0,116,1,0)
-actionBtn.Position = UDim2.new(1.013,0,0,0)
+actionBtn.Position = UDim2.new(1,0,0,-10)
 actionBtn.AnchorPoint = Vector2.new(1,0)
 actionBtn.BackgroundColor3 = Color3.fromRGB(60,150,255)
 actionBtn.Text = "Fling"
@@ -128,10 +124,10 @@ actionBtn.TextColor3 = Color3.fromRGB(255,255,255)
 Instance.new("UICorner", actionBtn).CornerRadius = UDim.new(0,8)
 Instance.new("UIStroke", actionBtn).Color = Color3.fromRGB(38,105,190)
 
--- Status label
+-- Status label (moved up)
 local statusLabel = Instance.new("TextLabel", mainFrame)
 statusLabel.Size = UDim2.new(1,-padding*2,0,22)
-statusLabel.Position = UDim2.new(0,padding,1,-(padding+36.5))
+statusLabel.Position = UDim2.new(0,padding,0.75,0) -- pushed upward
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Ready"
 statusLabel.Font = Enum.Font.Gotham
@@ -184,18 +180,6 @@ local function stopFling()
     actionBtn.Text = "Fling"
     actionBtn.BackgroundColor3 = Color3.fromRGB(60,150,255)
     actionBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    actionBtn.Visible = true
-
-    -- Re-enable Fling All button if it exists
-    if flingAllBtn then
-        pcall(function()
-            flingAllBtn.Active = true
-            flingAllBtn.AutoButtonColor = true
-            flingAllBtn.BackgroundColor3 = Color3.fromRGB(60,200,60)
-            flingAllBtn.TextColor3 = Color3.fromRGB(255,255,255)
-        end)
-    end
-
     statusLabel.Text = "Ready"
     local myHRP = safeFindHRP(LocalPlayer.Character)
     if myHRP then
@@ -231,31 +215,14 @@ local function flingTarget(targetPlayer)
 end
 
 local function startFlingFor(query)
-    -- Guard: if "Fling All" is running, do not allow single-target fling.
-    if flingAllActive then
-        statusLabel.Text = "Can't use single-target while Fling All is active"
-        return
-    end
-
     if active then stopFling() return end
     local target = getTargetByQuery(query)
     if not target then statusLabel.Text = "Target not found" return end
     if target == LocalPlayer then statusLabel.Text = "Can't target yourself" return end
 
     actionBtn.Text = "Stop"
-    -- red background when single-target is active
     actionBtn.BackgroundColor3 = Color3.fromRGB(220,60,60)
     actionBtn.TextColor3 = Color3.fromRGB(255,255,255)
-
-    -- visually disable flingAllBtn while single-target is active
-    if flingAllBtn then
-        pcall(function()
-            flingAllBtn.Active = false
-            flingAllBtn.AutoButtonColor = false
-            flingAllBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
-            flingAllBtn.TextColor3 = Color3.fromRGB(160,160,160)
-        end)
-    end
 
     statusLabel.Text = ("Locking on %s..."):format(target.Name)
     flingTask = task.spawn(function()
@@ -263,137 +230,16 @@ local function startFlingFor(query)
     end)
 end
 
--- Connectors (use wrappers so they respect flingAllActive)
+-- Connect button & enter
 actionBtn.MouseButton1Click:Connect(function()
-    if flingAllActive then
-        -- optional: give visual feedback
-        statusLabel.Text = "Fling All is active — stop it first"
-        return
-    end
     startFlingFor(inputBox.Text or "")
 end)
 
 inputBox.FocusLost:Connect(function(enter)
     if enter then
-        if flingAllActive then
-            statusLabel.Text = "Fling All is active — stop it first"
-            return
-        end
         startFlingFor(inputBox.Text or "")
     end
 end)
+
 LocalPlayer.CharacterRemoving:Connect(stopFling)
 Players.PlayerRemoving:Connect(stopFling)
-
--- ===== Fling All =====
-local flingAllBtn = Instance.new("TextButton", mainFrame)
-flingAllBtn.Size = UDim2.new(1,-padding*2,0,28)
-flingAllBtn.Position = UDim2.new(0,padding,1,-(padding+68))
-flingAllBtn.BackgroundColor3 = Color3.fromRGB(60,200,60)
-flingAllBtn.Text = "Fling All"
-flingAllBtn.Font = Enum.Font.GothamBold
-flingAllBtn.TextSize = 15
-flingAllBtn.TextColor3 = Color3.fromRGB(255,255,255)
-Instance.new("UICorner", flingAllBtn).CornerRadius = UDim.new(0,8)
-
-local flingAllActive = false
-local flingAllTask
-local hoverTweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
--- Hover only works when not active
-flingAllBtn.MouseEnter:Connect(function()
-    if not flingAllActive then
-        TweenService:Create(flingAllBtn, hoverTweenInfo, {BackgroundColor3 = Color3.fromRGB(80,220,80)}):Play()
-    end
-end)
-flingAllBtn.MouseLeave:Connect(function()
-    if not flingAllActive then
-        TweenService:Create(flingAllBtn, hoverTweenInfo, {BackgroundColor3 = Color3.fromRGB(60,200,60)}):Play()
-    end
-end)
-
-local function stopFlingAll()
-    flingAllActive = false
-    flingAllTask = nil
-    flingAllBtn.Text = "Fling All"
-    flingAllBtn.BackgroundColor3 = Color3.fromRGB(60,200,60)
-    flingAllBtn.TextColor3 = Color3.fromRGB(255,255,255)
-
-    -- Re-enable single-target fling button
-    actionBtn.BackgroundColor3 = Color3.fromRGB(60,150,255)
-    actionBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    actionBtn.Active = true
-    actionBtn.AutoButtonColor = true
-    actionBtn.Visible = true -- restore visibility
-
-    statusLabel.Text = "Ready"
-    local myHRP = safeFindHRP(LocalPlayer.Character)
-    if myHRP then
-        setAssemblyLinearVelocity(myHRP, Vector3.zero)
-        setAssemblyAngularVelocity(myHRP, Vector3.zero)
-    end
-end
-
-local function startFlingAll()
-    -- Prevent Fling All from starting while a single-target fling is active
-    if active then
-        statusLabel.Text = "Can't start Fling All while single-target fling is active"
-        return
-    end
-
-    if flingAllActive then
-        stopFlingAll()
-        return
-    end
-
-    flingAllActive = true
-    flingAllBtn.Text = "Stop"
-    flingAllBtn.BackgroundColor3 = Color3.fromRGB(220,60,60)
-    flingAllBtn.TextColor3 = Color3.fromRGB(255,255,255)
-
-    -- Disable single-target fling button visually and functionally
-    actionBtn.Active = false
-    actionBtn.AutoButtonColor = false
-    actionBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
-    actionBtn.TextColor3 = Color3.fromRGB(160,160,160)
-    actionBtn.Visible = false -- fully hide so it cannot be clicked or hovered
-
-    flingAllTask = task.spawn(function()
-        local playersList = Players:GetPlayers()
-        local myChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-        local myHRP = safeFindHRP(myChar)
-        if not myHRP then
-            stopFlingAll()
-            return
-        end
-
-        for _, target in ipairs(playersList) do
-            if target ~= LocalPlayer then
-                local targetHRP = safeFindHRP(target.Character)
-                if targetHRP and targetHRP.Parent and targetHRP.CanCollide then
-                    statusLabel.Text = ("Flinging %s..."):format(target.Name)
-                    -- Teleport behind
-                    local behindPos = targetHRP.Position - targetHRP.CFrame.LookVector * BEHIND_DISTANCE
-                    local desired = CFrame.lookAt(behindPos + Vector3.new(0, SAFE_VERTICAL_OFFSET,0), targetHRP.Position)
-                    pcall(function() myChar:PivotTo(desired) end)
-                    -- Apply fling
-                    setAssemblyAngularVelocity(myHRP, SPIN)
-                    local startTime = tick()
-                    while tick() - startTime < 2.1 do
-                        if not flingAllActive then break end
-                        local dir = (targetHRP.Position - myHRP.Position).Unit
-                        setAssemblyLinearVelocity(myHRP, dir * RAM_FORCE)
-                        RunService.Heartbeat:Wait()
-                    end
-                    setAssemblyLinearVelocity(myHRP, Vector3.zero)
-                    setAssemblyAngularVelocity(myHRP, Vector3.zero)
-                    if not flingAllActive then break end
-                end
-            end
-        end
-
-        stopFlingAll()
-    end)
-end
-
-flingAllBtn.MouseButton1Click:Connect(startFlingAll)
