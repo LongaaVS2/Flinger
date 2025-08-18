@@ -42,24 +42,24 @@ local function setAssemblyAngularVelocity(part, vec)
     pcall(function() part.AssemblyAngularVelocity = vec end)
 end
 
--- ===== GUI (PC + Mobile Friendly) =====
+-- ===== GUI (shrunk & mobile-friendly) =====
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "RamSpinGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-screenGui.IgnoreGuiInset = true -- fits top of mobile screens
+screenGui.IgnoreGuiInset = true
 
-local padding = 10
+local padding = 8
 
 -- Main frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 350, 0, 115) -- moderate size for all devices
+mainFrame.Size = UDim2.new(0, 280, 0, 95) -- much smaller
 mainFrame.Position = UDim2.new(0.5, 0, 0.05, 0)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0,12)
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0,10)
 local mainStroke = Instance.new("UIStroke", mainFrame)
 mainStroke.Color = Color3.fromRGB(44,44,44)
 mainStroke.Thickness = 1
@@ -67,17 +67,16 @@ mainStroke.Transparency = 0.6
 
 -- Title bar
 local titleBar = Instance.new("Frame", mainFrame)
-titleBar.Size = UDim2.new(1, -padding*2, 0, 20)
-titleBar.Position = UDim2.new(0, padding, 0, padding)
+titleBar.Size = UDim2.new(1,-padding*2,0,18)
+titleBar.Position = UDim2.new(0,padding,0,padding)
 titleBar.BackgroundTransparency = 1
 
 local title = Instance.new("TextLabel", titleBar)
-title.Size = UDim2.new(0.6, 0, 1, 0)
-title.Position = UDim2.new(0,0,0,0)
+title.Size = UDim2.new(0.6,0,1,0)
 title.BackgroundTransparency = 1
-title.Text = "Fling GUI by LongaaVS2"
+title.Text = "Fling GUI"
 title.Font = Enum.Font.GothamSemibold
-title.TextSize = 18
+title.TextSize = 16
 title.TextColor3 = Color3.fromRGB(240,240,240)
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -87,54 +86,101 @@ miniHint.Position = UDim2.new(0.6,0,0,0)
 miniHint.BackgroundTransparency = 1
 miniHint.Text = "RightAlt to Toggle"
 miniHint.Font = Enum.Font.Gotham
-miniHint.TextSize = 12
+miniHint.TextSize = 10
 miniHint.TextColor3 = Color3.fromRGB(160,160,160)
 miniHint.TextXAlignment = Enum.TextXAlignment.Right
 
 -- Input row
 local row = Instance.new("Frame", mainFrame)
-row.Size = UDim2.new(1,-padding*2,0,42)
-row.Position = UDim2.new(0,padding,0,padding+28)
+row.Size = UDim2.new(1,-padding*2,0,36)
+row.Position = UDim2.new(0,padding,0,padding+20)
 row.BackgroundTransparency = 1
 
 local inputBox = Instance.new("TextBox", row)
-inputBox.Size = UDim2.new(1,-123,1,0)
+inputBox.Size = UDim2.new(1,-110,1,0)
 inputBox.Position = UDim2.new(0,0,0,0)
 inputBox.BackgroundColor3 = Color3.fromRGB(32,32,32)
 inputBox.TextColor3 = Color3.fromRGB(245,245,245)
 inputBox.PlaceholderText = "Target Name"
 inputBox.ClearTextOnFocus = true
 inputBox.Font = Enum.Font.Gotham
-inputBox.TextSize = 15
-inputBox.Text = ""
-inputBox.AutoLocalize = false
+inputBox.TextSize = 13
 inputBox.TextXAlignment = Enum.TextXAlignment.Left
-Instance.new("UICorner",inputBox).CornerRadius = UDim.new(0,8)
-local inputPadding = Instance.new("UIPadding",inputBox)
-inputPadding.PaddingLeft = UDim.new(0,8)
+Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0,6)
+local inputPadding = Instance.new("UIPadding", inputBox)
+inputPadding.PaddingLeft = UDim.new(0,6)
 
 local actionBtn = Instance.new("TextButton", row)
-actionBtn.Size = UDim2.new(0,116,1,0)
+actionBtn.Size = UDim2.new(0,106,1,0)
 actionBtn.Position = UDim2.new(1,0,0,0)
 actionBtn.AnchorPoint = Vector2.new(1,0)
 actionBtn.BackgroundColor3 = Color3.fromRGB(60,150,255)
 actionBtn.Text = "Fling"
 actionBtn.Font = Enum.Font.GothamBold
-actionBtn.TextSize = 15
+actionBtn.TextSize = 13
 actionBtn.TextColor3 = Color3.fromRGB(255,255,255)
-Instance.new("UICorner", actionBtn).CornerRadius = UDim.new(0,8)
+Instance.new("UICorner", actionBtn).CornerRadius = UDim.new(0,6)
 Instance.new("UIStroke", actionBtn).Color = Color3.fromRGB(38,105,190)
 
--- Status label (slightly above bottom)
+-- Status label
 local statusLabel = Instance.new("TextLabel", mainFrame)
-statusLabel.Size = UDim2.new(1,-padding*2,0,22)
-statusLabel.Position = UDim2.new(0,padding,0.75,0)
+statusLabel.Size = UDim2.new(1,-padding*2,0,20)
+statusLabel.Position = UDim2.new(0,padding,0.7,0)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Ready"
 statusLabel.Font = Enum.Font.Gotham
-statusLabel.TextSize = 13
+statusLabel.TextSize = 11
 statusLabel.TextColor3 = Color3.fromRGB(200,200,200)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- ===== Dragging (mouse + touch) =====
+local dragging = false
+local dragInput, dragStartPos, frameStartPos
+
+local function updateDrag(input)
+    if dragging and dragInput and frameStartPos and dragStartPos then
+        local delta = input.Position - dragStartPos
+        mainFrame.Position = UDim2.new(
+            frameStartPos.X.Scale, frameStartPos.X.Offset + delta.X,
+            frameStartPos.Y.Scale, frameStartPos.Y.Offset + delta.Y
+        )
+    end
+end
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+       or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStartPos = input.Position
+        frameStartPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+titleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement 
+       or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if dragging and dragInput then
+        updateDrag(dragInput)
+    end
+end)
+
+-- RightAlt toggle
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.RightAlt then
+        screenGui.Enabled = not screenGui.Enabled
+    end
+end)
 
 -- ===== Dragging (mouse + touch) =====
 local dragging = false
